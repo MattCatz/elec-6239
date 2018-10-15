@@ -61,14 +61,16 @@ double percent_error(matrix *C, const size_t M) {
   return (total_error * 100) / pow(M,2);
 }
 
-int main() {
+int main(int argc, char **argv) {
   const size_t M = 3240;
+  int threads;
   double start_time, end_time;
 
-  #ifdef THREADS
-  printf("Using %d threads...\n", THREADS);
-  omp_set_num_threads(THREADS);
-  #endif
+  if (argc > 1) {
+    threads = atoi(argv[1]); 
+    printf("Using %d threads...\n", threads);
+    omp_set_num_threads(threads);
+  }
  
   start_time = omp_get_wtime();
   printf("Starting...\n");

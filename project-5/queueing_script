@@ -1,0 +1,8 @@
+#!/bin/sh
+
+USER=aubcls29
+
+for nthreads in 7 8 9
+  do
+  ./p5 $nthreads >> project_5.txt
+done
