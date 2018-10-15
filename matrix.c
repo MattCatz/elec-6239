@@ -6,7 +6,7 @@
 #include <omp.h>
 
 
-matrix* matrix_create(size_t rows, size_t cols, float data[cols][rows]) {
+matrix* matrix_create(size_t rows, size_t cols, double data[cols][rows]) {
 	assert(rows > 0);
 	assert(cols > 0);
 
@@ -17,12 +17,12 @@ matrix* matrix_create(size_t rows, size_t cols, float data[cols][rows]) {
 	m->rows = rows;
 	m->cols = cols;
 
-	m->data = (float *) calloc(rows*cols, sizeof(float));
+	m->data = (double *) calloc(rows*cols, sizeof(double));
 	assert(m->data != NULL);
 
 	// Only set data if they passed us something
 	if (data != NULL) {
-		memcpy(m->data, data, rows*cols*sizeof(float));
+		memcpy(m->data, data, rows*cols*sizeof(double));
 	}
 
 	return m;
@@ -47,6 +47,21 @@ void matrix_print(matrix* m) {
 	}
 }
 
+void matrix_print_some(matrix* m, const size_t X1, const size_t X2, const size_t Y1, const size_t Y2) {
+	assert(X1 < X2);
+   assert(Y1 < Y2);
+   assert(X2 <= m->rows);
+   assert(Y2 <= m->cols);
+   int i,j;
+	assert(m != NULL);
+	for (i = X1; i < X2; i++) {
+		for (j = Y1; j < Y2; j++) {
+			printf("%.3f, ", INDEX(m,i,j)); // Notice only 3 digits
+		}
+		printf("\n");
+	}
+}
+
 matrix* matrix_mul(matrix* A, matrix* B) {
 	assert(A != NULL);
 	assert(B != NULL);
@@ -60,7 +75,7 @@ matrix* matrix_mul(matrix* A, matrix* B) {
    tid = omp_get_thread_num();
 #pragma omp for  schedule(static)
     for (row = 0; row < A->rows; row++) {
-    printf("Thread=%d did row=%d\n",tid,row);
+    //printf("Thread=%d did row=%d\n",tid,row);
 		for (col = 0; col < B->cols; col++) {
 			for (k = 0; k < A->cols; k++) {
 				INDEX(C,row,col) += INDEX(A,row,k)*INDEX(B,k,col);
