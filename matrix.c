@@ -77,7 +77,6 @@ matrix* matrix_mul(matrix* A, matrix* B) {
     for (row = 0; row < A->rows; row++) {
     //printf("Thread=%d did row=%d\n",tid,row);
       for (col = 0; col < B->cols; col++) {
-                        #pragma omp simd		
 			for (k = 0; k < A->cols; k++) {
 				INDEX(C,row,col) += INDEX(A,row,k)*INDEX(B,k,col);
 			}
@@ -88,19 +87,23 @@ matrix* matrix_mul(matrix* A, matrix* B) {
 	return C;
 }
 
-matrix* matrix_con(matrix* F, matrix* H) {
-	int i,j,k,m,ii,jj,kk,mm;
-	int x_center, y_center;
-	matrix* G;
-
+matrix* matrix_convolve(matrix* F, matrix* H) {
 	assert(F != NULL);
 	assert(H != NULL);
 
-	G = matrix_create(F->rows, F->cols, NULL);
+   int i,j,k,m,ii,jj,kk,mm;
+	int x_center, y_center, tid;
 
 	x_center = H->cols / 2;
-  y_center = H->rows / 2;
+   y_center = H->rows / 2;
 
+	matrix* G;
+	G = matrix_create(F->rows, F->cols, NULL);
+   
+   #pragma omp parallel shared(F,H,G,x_center,y_center) private(i,j,k,m,ii,jj,kk,mm) 
+   {	
+   tid = omp_get_thread_num();
+   #pragma omp for 
 	for(i=0; i < F->rows; ++i) {
 		for(j=0; j < F->cols; ++j) {
 			for(k=0; k < H->rows; ++k) {
@@ -118,5 +121,6 @@ matrix* matrix_con(matrix* F, matrix* H) {
 			}
 		}
 	}
-	return G;
+	}
+   return G;
 }

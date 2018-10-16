@@ -1,0 +1,12 @@
+#!/bin/sh
+
+USER=aubcls29
+
+start_time=`date '+%T'`;
+
+run_log="$start_time.project_6.log";
+
+for nthreads in 1 2 4 8 12
+  do
+  ./p5 $nthreads >> $run_log 
+done
