@@ -12,15 +12,12 @@ void matrix_gen_a(matrix *A, const size_t M) {
   assert(A->data != NULL);
   int i, j;
 
-  #pragma omp parallel shared(A) private(i,j) 
-  {
-     #pragma omp for schedule(static)
+     #pragma omp simd collapse(2)
      for (i = 0; i < M; i++) {
        for (j = 0; j < M; j++) {
          INDEX(A,i,j) = ((i+1.0)*(j+1.0)) / M;
        }
      }
-   }
 }
 
 void matrix_gen_b(matrix *B, const size_t M) {
@@ -30,15 +27,12 @@ void matrix_gen_b(matrix *B, const size_t M) {
   assert(B->data != NULL);
   int i, j;
 
-  #pragma omp parallel shared(B) private(i,j) 
-  {
-    #pragma omp for schedule(static)
+    #pragma omp simd collapse(2)
     for (i = 0; i < M; i++) {
       for (j = 0; j < M; j++) {
         INDEX(B,i,j) = (j+1.0)/(i+1.0);
       }
     }
-  }
 }
 
 double percent_error(matrix *C, const size_t M) {
@@ -47,16 +41,13 @@ double percent_error(matrix *C, const size_t M) {
 
   total_error = 0;
   error = 0;
-  #pragma omp parallel shared(C,total_error) private(error, i, j)
-  {
-    #pragma omp for reduction (+:total_error)
+    #pragma omp simd collapse(2) reduction (+:total_error)
     for (i = 0; i < M; i++) {
       for (j = 0; j < M; j++) {
         error = fabs(INDEX(C,i,j) - (i+1.0)*(j+1.0)) / ((i+1.0)*(j+1.0));
         total_error += error;
       }
     }
-  }
   
   return (total_error * 100) / pow(M,2);
 }
@@ -71,7 +62,6 @@ int main(int argc, char **argv) {
     printf("Using %d threads...\n", threads);
     omp_set_num_threads(threads);
   }
- 
   start_time = omp_get_wtime();
   printf("Starting...\n");
   matrix* A = matrix_create(M, M, NULL);

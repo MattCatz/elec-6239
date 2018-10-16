@@ -70,13 +70,14 @@ matrix* matrix_mul(matrix* A, matrix* B) {
 	matrix* C = matrix_create(A->rows, B->cols, NULL);
 
 	int row,col,k,tid;
-#pragma omp parallel shared(A,B,C) private(row,col,k,tid) 
+  #pragma omp parallel shared(A,B,C) private(row,col,k,tid) 
   {
    tid = omp_get_thread_num();
-#pragma omp for  schedule(static)
+   #pragma omp for collapse(2)
     for (row = 0; row < A->rows; row++) {
     //printf("Thread=%d did row=%d\n",tid,row);
-		for (col = 0; col < B->cols; col++) {
+      for (col = 0; col < B->cols; col++) {
+                        #pragma omp simd		
 			for (k = 0; k < A->cols; k++) {
 				INDEX(C,row,col) += INDEX(A,row,k)*INDEX(B,k,col);
 			}
