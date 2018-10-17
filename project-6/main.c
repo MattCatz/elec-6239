@@ -76,10 +76,6 @@ int main(int argc, char **argv) {
   matrix* G = matrix_convolve(F, H); 
   printf("Done convolving F and H\n");
 
-  matrix_destroy(F);
-  matrix_destroy(H);
-  matrix_destroy(G);
-
   printf("\n");
   matrix_print_some(G, 1615, 1624, 0, 10);
   printf("\n");
@@ -87,6 +83,10 @@ int main(int argc, char **argv) {
   end_time = omp_get_wtime();
 
   printf("Total time: %f (sec)\n\n", (end_time-start_time));
+
+  matrix_destroy(F);
+  matrix_destroy(H);
+  matrix_destroy(G);
 
   return 0;
 }

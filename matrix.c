@@ -73,6 +73,7 @@ matrix* matrix_mul(matrix* A, matrix* B) {
   #pragma omp parallel shared(A,B,C) private(row,col,k,tid) 
   {
    tid = omp_get_thread_num();
+   printf("Thread %d checking in\n",tid);
    #pragma omp for collapse(2)
     for (row = 0; row < A->rows; row++) {
     //printf("Thread=%d did row=%d\n",tid,row);
@@ -103,6 +104,7 @@ matrix* matrix_convolve(matrix* F, matrix* H) {
    #pragma omp parallel shared(F,H,G,x_center,y_center) private(i,j,k,m,ii,jj,kk,mm) 
    {	
    tid = omp_get_thread_num();
+   printf("Thread %d checking in\n",tid);
    #pragma omp for 
 	for(i=0; i < F->rows; ++i) {
 		for(j=0; j < F->cols; ++j) {
