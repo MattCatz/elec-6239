@@ -147,9 +147,9 @@ void matrix_convolve_p(matrix* F, matrix* H) {
       G = matrix_create(F->rows, (F->cols / n), NULL);
       col_start = tid * (F->cols / n);
       printf("Thread %d checking in %d %d\n",tid,col_start,col_start+(F->cols / n) - 1);
-      #pragma omp for 
+
       for(i=0; i < G->rows; i++) {
-         printf("Thread %d doing row %d\n", tid, i + col_start);
+         printf("Thread %d doing row %d\n", tid, i);
          for(j=0; j < (F->cols / n); j++) {
             for(k=0; k < H->rows; ++k) {
                kk = H->rows - 1 - k;
@@ -167,10 +167,8 @@ void matrix_convolve_p(matrix* F, matrix* H) {
          }
       }
 
-     #pragma omp for
      for(i = 0; i < G->rows; i++) {
        for(j = 0; j < (F->cols / n); j++) {
-           //assert(INDEX(G,i,j) != 0);
            INDEX(F,i,col_start + j) = INDEX(G,i,j);
      }
    }

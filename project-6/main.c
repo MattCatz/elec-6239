@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
    for (i = 0;i < F->rows; ++i) {
       for (j = 0;j < F->cols; ++j) {
          if (fabs(INDEX(F,i,j)- INDEX(G,i,j)) > .001 ) {
-//            printf("index %d %d %f\n",i,j,fabs(INDEX(F,i,j)- INDEX(G,i,j)));
+            printf("index %d %d %f\n",i,j,fabs(INDEX(F,i,j)- INDEX(G,i,j)));
          }
       }
    }
