@@ -101,10 +101,10 @@ matrix* matrix_convolve(matrix* F, matrix* H) {
    matrix* G;
    G = matrix_create(F->rows, F->cols, NULL);
 
-   #pragma omp parallel shared(F,H,G,x_center,y_center) private(i,j,k,m,ii,jj,kk,mm) 
+   #pragma omp parallel shared(F,H,G,x_center,y_center) private(i,j,k,m,ii,jj,kk,mm,tid) 
    {  
       tid = omp_get_thread_num();
-      printf("Thread %d checking in\n",tid);
+      //printf("Thread %d checking in\n",tid);
       #pragma omp for 
       for(i=0; i < F->rows; ++i) {
          for(j=0; j < F->cols; ++j) {
@@ -131,36 +131,32 @@ void matrix_convolve_p(matrix* F, matrix* H) {
    assert(F != NULL);
    assert(H != NULL);
 
-   int i,j,k,m,ii,jj,kk,mm;
-   int x_center, y_center, tid;
+   int x_center, y_center;
 
    x_center = H->cols / 2;
    y_center = H->rows / 2;
 
-   matrix* G;
-   G = matrix_create(F->rows, F->cols, NULL);
-
-   #pragma omp parallel shared(F,H,G,x_center,y_center) private(i,j,k,m,ii,jj,kk,mm) 
+   #pragma omp parallel shared(F,H,x_center,y_center) 
    {  
+      int i,j,k,m,ii,jj,kk,mm,tid;
       tid = omp_get_thread_num();
       int n = omp_get_num_threads();
-      printf("Thread %d checking in\n",tid);
       int col_start, col_end;
       matrix* G;
 
-      // Do this to pickup the undivisible part of the matrix
-      matrix_create(F->rows, (F->cols / n), NULL);
-      col_start = tid * n;
-      col_end = col_start + n - 1;
+      G = matrix_create(F->rows, (F->cols / n), NULL);
+      col_start = tid * (F->cols / n);
+      printf("Thread %d checking in %d %d\n",tid,col_start,col_start+(F->cols / n) - 1);
       #pragma omp for 
       for(i=0; i < G->rows; i++) {
-         for(j=col_start; j <= col_end; j++) {
+         printf("Thread %d doing row %d\n", tid, i + col_start);
+         for(j=0; j < (F->cols / n); j++) {
             for(k=0; k < H->rows; ++k) {
                kk = H->rows - 1 - k;
                for(m=0; m < H->cols; ++m) {
                   mm = H->cols - 1 - m;
                   ii = i + (y_center - kk);
-                  jj = j + (x_center - mm);
+                  jj = col_start + j + (x_center - mm);
 
                   // Only compute indexes inside matrix
                   if( ii >= 0 && ii < F->rows && jj >= 0 && jj < F->cols ) {
@@ -173,8 +169,9 @@ void matrix_convolve_p(matrix* F, matrix* H) {
 
      #pragma omp for
      for(i = 0; i < G->rows; i++) {
-       for(j = col_start; j <= col_end; j++) {
-          INDEX(F,i,j) = INDEX(G,i,j);
+       for(j = 0; j < (F->cols / n); j++) {
+           //assert(INDEX(G,i,j) != 0);
+           INDEX(F,i,col_start + j) = INDEX(G,i,j);
      }
    }
  }
