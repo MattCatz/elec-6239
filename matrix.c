@@ -127,17 +127,6 @@ matrix* matrix_convolve(matrix* F, matrix* H) {
    return G;
 }
 
-void *
-mycpy (void *dest, const void *src, size_t len)
-{
-  char *d = dest;
-  const char *s = src;
-  while (len--) {
-    printf("Moving from %X to %X\n",s,d);
-    *d++ = *s++;}
-  return dest;
-}
-
 void matrix_convolve_p(matrix* F, matrix* H) {
    assert(F != NULL);
    assert(H != NULL);
@@ -157,7 +146,6 @@ void matrix_convolve_p(matrix* F, matrix* H) {
 
       G = matrix_create((size_t)(F->rows / n), F->cols, NULL);
       row_start = tid * (F->rows / n);
-      printf("Thread %d checking in %X\n",tid,G->data);
       
       #pragma omp exclusive
       for(i=0; i < G->rows; ++i) {
