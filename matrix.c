@@ -70,7 +70,7 @@ matrix* matrix_mul(matrix* A, matrix* B) {
    matrix* C = matrix_create(A->rows, B->cols, NULL);
 
    int row,col,k,tid;
-#pragma omp parallel shared(A,B,C) private(row,col,k,tid) 
+#pragma omp parallel shared(A,B,C) private(row,col,k,tid)
    {
       tid = omp_get_thread_num();
       printf("Thread %d checking in\n",tid);
@@ -101,11 +101,11 @@ matrix* matrix_convolve(matrix* F, matrix* H) {
    matrix* G;
    G = matrix_create(F->rows, F->cols, NULL);
 
-   #pragma omp parallel shared(F,H,G,x_center,y_center) private(i,j,k,m,ii,jj,kk,mm,tid) 
-   {  
+   #pragma omp parallel shared(F,H,G,x_center,y_center) private(i,j,k,m,ii,jj,kk,mm,tid)
+   {
       tid = omp_get_thread_num();
       //printf("Thread %d checking in\n",tid);
-      #pragma omp for 
+      #pragma omp for
       for(i=0; i < F->rows; ++i) {
          for(j=0; j < F->cols; ++j) {
             for(k=0; k < H->rows; ++k) {
@@ -127,36 +127,46 @@ matrix* matrix_convolve(matrix* F, matrix* H) {
    return G;
 }
 
+void *
+mycpy (void *dest, const void *src, size_t len)
+{
+  char *d = dest;
+  const char *s = src;
+  while (len--) {
+    printf("Moving from %X to %X\n",s,d);
+    *d++ = *s++;}
+  return dest;
+}
+
 void matrix_convolve_p(matrix* F, matrix* H) {
    assert(F != NULL);
    assert(H != NULL);
 
-   int x_center, y_center;
-
-   x_center = H->cols / 2;
-   y_center = H->rows / 2;
-
-   #pragma omp parallel shared(F,H,x_center,y_center) 
-   {  
+   #pragma omp parallel shared(F,H)
+   {
       int i,j,k,m,ii,jj,kk,mm,tid;
       tid = omp_get_thread_num();
       int n = omp_get_num_threads();
       int col_start, col_end;
       matrix* G;
+      
+         int x_center, y_center;
 
-      G = matrix_create(F->rows, (F->cols / n), NULL);
-      col_start = tid * (F->cols / n);
-      printf("Thread %d checking in %d %d\n",tid,col_start,col_start+(F->cols / n) - 1);
+   x_center = H->cols / 2;
+   y_center = H->rows / 2;
 
-      for(i=0; i < G->rows; i++) {
-         printf("Thread %d doing row %d\n", tid, i);
-         for(j=0; j < (F->cols / n); j++) {
+      G = matrix_create((F->rows / n), F->cols, NULL);
+      col_start = tid * (F->rows / n);
+      printf("Thread %d checking in %X\n",tid,G->data);
+      
+      for(i=0; i < G->rows; ++i) {
+         for(j=0; j < G->cols; ++j) {
             for(k=0; k < H->rows; ++k) {
                kk = H->rows - 1 - k;
                for(m=0; m < H->cols; ++m) {
                   mm = H->cols - 1 - m;
-                  ii = i + (y_center - kk);
-                  jj = col_start + j + (x_center - mm);
+                  ii = col_start + i + (y_center - kk);
+                  jj = j + (x_center - mm);
 
                   // Only compute indexes inside matrix
                   if( ii >= 0 && ii < F->rows && jj >= 0 && jj < F->cols ) {
@@ -166,11 +176,11 @@ void matrix_convolve_p(matrix* F, matrix* H) {
             }
          }
       }
+      #pragma omp critical
+      {
+      printf("Thread %d copying %X bytes from %X to %X \n", tid, G->rows*G->cols*sizeof(matrix_t), &(INDEX(G,0,0)), &(INDEX(F,col_start,0)));
+      mycpy(&(INDEX(F,col_start,0)), &(INDEX(G,0,0)), G->rows*G->cols*sizeof(matrix_t));
+      }
 
-     for(i = 0; i < G->rows; i++) {
-       for(j = 0; j < (F->cols / n); j++) {
-           INDEX(F,i,col_start + j) = INDEX(G,i,j);
-     }
-   }
  }
 }

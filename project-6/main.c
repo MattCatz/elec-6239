@@ -51,39 +51,53 @@ double percent_error(matrix *C, const size_t M) {
 }
 
 int main(int argc, char **argv) {
-   const size_t M = 12;
+   const size_t M = 8;
    const size_t W = 3;
    int threads;
    double start_time, end_time;
 
    if (argc > 1) {
-      threads = atoi(argv[1]); 
+      threads = atoi(argv[1]);
       printf("Using %d threads...\n", threads);
       omp_set_num_threads(threads);
    }
+   
+     double F_data[8][8] = {{0,0,0,0,0,0,0,0},
+								 {0,0,0,0,0,0,0,0},
+								 {0,0,1,1,1,1,0,0},
+								 {0,0,1,1,1,1,0,0},
+								 {0,0,1,1,1,1,0,0},
+								 {0,0,1,1,1,1,0,0},
+								 {0,0,0,0,0,0,0,0},
+								 {0,0,0,0,0,0,0,0}};
+
+	double H_data[3][3] = {{1/9., 1/9., 1/9.},
+   							 {1/9., 1/9., 1/9.},
+   							 {1/9., 1/9., 1/9.}};
 
    start_time = omp_get_wtime();
    printf("Starting...\n");
-   matrix* F = matrix_create(M, M, NULL);
-   matrix* H = matrix_create(W, W, NULL);
+   matrix* F = matrix_create(M, M, F_data);
+   matrix* H = matrix_create(W, W, H_data);
 
    printf("Generating F\n");
-   matrix_gen_F(F, M);
+   //matrix_gen_F(F, M);
    printf("Generating H\n");
-   matrix_gen_H(H, W);
+   //matrix_gen_H(H, W);
 
    printf("Convolving F and H\n");
-   matrix* G = matrix_convolve(F, H); 
+   matrix* G = matrix_convolve(F, H);
    printf("Done convolving F and H\n");
 
    printf("Convolving F and H\n");
-   matrix_convolve_p(F, H); 
+   matrix_convolve_p(F, H);
    printf("Done convolving F and H\n");
+
    
    printf("\n");
-   matrix_print_some(G, 0, 12, 0, 12);
+   matrix_print(G);
    printf("\n");
-   matrix_print_some(F, 0, 12, 0, 12);
+   matrix_print(F);
    printf("\n");printf("\n");
 
    int i,j;

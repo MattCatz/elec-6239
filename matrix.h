@@ -3,14 +3,16 @@
 
 #define INDEX(m, row, col) \
   m->data[(m->cols) * row + (col)]
+  
+typedef double matrix_t;
 
 struct {
 	size_t rows;
 	size_t cols;
-	double *data;
+	matrix_t *data;
 } typedef matrix;
 
-matrix* matrix_create(size_t rows, size_t cols, double data[cols][rows]);
+matrix* matrix_create(size_t rows, size_t cols, matrix_t data[cols][rows]);
 void matrix_destroy(matrix* m);
 void matrix_print(matrix* m);
 void matrix_print_some(matrix* m, const size_t X1, const size_t X2, const size_t Y1, const size_t Y2);
