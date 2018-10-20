@@ -51,8 +51,8 @@ double percent_error(matrix *C, const size_t M) {
 }
 
 int main(int argc, char **argv) {
-   const size_t M = 8;
-   const size_t W = 3;
+   const size_t M = 3240;
+   const size_t W = 33;
    int threads;
    double start_time, end_time;
 
@@ -62,42 +62,33 @@ int main(int argc, char **argv) {
       omp_set_num_threads(threads);
    }
    
-     double F_data[8][8] = {{0,0,0,0,0,0,0,0},
-								 {0,0,0,0,0,0,0,0},
-								 {0,0,1,1,1,1,0,0},
-								 {0,0,1,1,1,1,0,0},
-								 {0,0,1,1,1,1,0,0},
-								 {0,0,1,1,1,1,0,0},
-								 {0,0,0,0,0,0,0,0},
-								 {0,0,0,0,0,0,0,0}};
-
-	double H_data[3][3] = {{1/9., 1/9., 1/9.},
-   							 {1/9., 1/9., 1/9.},
-   							 {1/9., 1/9., 1/9.}};
-
-   start_time = omp_get_wtime();
    printf("Starting...\n");
-   matrix* F = matrix_create(M, M, F_data);
-   matrix* H = matrix_create(W, W, H_data);
+   matrix* F = matrix_create(M, M, NULL);
+   matrix* H = matrix_create(W, W, NULL);
 
    printf("Generating F\n");
-   //matrix_gen_F(F, M);
+   matrix_gen_F(F, M);
    printf("Generating H\n");
-   //matrix_gen_H(H, W);
+   matrix_gen_H(H, W);
 
-   printf("Convolving F and H\n");
+   printf("Convolving F and H using global G\n");
+   start_time = omp_get_wtime();
    matrix* G = matrix_convolve(F, H);
+   end_time = omp_get_wtime();
    printf("Done convolving F and H\n");
+   printf("Total time: %f (sec)\n\n", (end_time-start_time));
 
-   printf("Convolving F and H\n");
+   printf("Convolving F and H using local G\n");
+   start_time = omp_get_wtime();
    matrix_convolve_p(F, H);
+   end_time = omp_get_wtime();
    printf("Done convolving F and H\n");
-
+   printf("Total time: %f (sec)\n\n", (end_time-start_time));
    
    printf("\n");
-   matrix_print(G);
+   matrix_print_some(G, 1615, 1624, 0, 10);
    printf("\n");
-   matrix_print(F);
+   matrix_print_some(F, 1615, 1624, 0, 10);
    printf("\n");printf("\n");
 
    int i,j;
@@ -109,10 +100,6 @@ int main(int argc, char **argv) {
          }
       }
    }
-
-   end_time = omp_get_wtime();
-
-   printf("Total time: %f (sec)\n\n", (end_time-start_time));
 
    matrix_destroy(F);
    matrix_destroy(H);
