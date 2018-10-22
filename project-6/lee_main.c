@@ -108,7 +108,6 @@ void matrix_convolve_p(matrix* F, matrix* H) {
       G = matrix_create((size_t)(F->rows / n), F->cols, NULL);
       row_start = tid * (F->rows / n);
 
-      #pragma omp exclusive
       for(i=0; i < G->rows; ++i) {
          for(j=0; j < G->cols; ++j) {
             for(k=0; k < H->rows; ++k) {
@@ -136,8 +135,8 @@ void matrix_convolve_p(matrix* F, matrix* H) {
 }
 
 int main(int argc, char **argv) {
-   const size_t M = 3240;
-   const size_t W = 33;
+   const size_t M = 12;
+   const size_t W = 3;
    int threads,i,j;
    double start_time, end_time;
 
@@ -166,20 +165,83 @@ int main(int argc, char **argv) {
 
    // Convolving F and H using global G
    start_time = omp_get_wtime();
-   matrix* G = matrix_convolve(F, H);
+   
+   matrix* G;
+   G = matrix_create(F->rows, F->cols, NULL);
+
+   #pragma omp parallel shared(F,H,G)
+   {
+     int i,j,k,m;
+     int tid;
+
+      tid = omp_get_thread_num();
+      //printf("Thread %d checking in\n",tid);
+      #pragma omp for
+      for(i=0; i < M; ++i) {
+         for(j=0; j < W; ++j) {
+            for(k=-(W)/2; k < (W)/2; ++k) {
+               for(m=-(W)/2; m < (W)/2; ++m) {
+                  // Only compute indexes inside matrix
+                  if( i+k >= 0 && i+k < M && j+m >= 0 && j+m < M ) {
+                     INDEX(G,i,j) += INDEX(F,i+k,j+m) * INDEX(H,k + W/2, m + W/2);
+                  }
+               }
+            }
+         }
+      }
+   }
    end_time = omp_get_wtime();
    printf("Total time using global G: %f (sec)\n", (end_time-start_time));
 
    // Convolving F and H using local G
    start_time = omp_get_wtime();
-   matrix_convolve_p(F, H);
+      #pragma omp parallel shared(F,H)
+   {
+      int i,j,k,m,ii,jj,kk,mm,tid;
+      tid = omp_get_thread_num();
+      int n = omp_get_num_threads();
+      int row_start, col_end;
+      matrix* G;
+
+      int x_center, y_center;
+
+      x_center = H->cols / 2;
+      y_center = H->rows / 2;
+
+      G = matrix_create((size_t)(F->rows / n), F->cols, NULL);
+      row_start = tid * (F->rows / n);
+
+      for(i=0; i < G->rows; ++i) {
+         for(j=0; j < G->cols; ++j) {
+            for(k=0; k < H->rows; ++k) {
+               for(m=0; m < H->cols; ++m) {
+                  kk = H->rows - 1 - k;
+                  mm = H->cols - 1 - m;
+                  ii = row_start + i + (y_center - kk);
+                  jj = j + (x_center - mm);
+
+                  // Only compute indexes inside matrix
+                  if( ii >= 0 && ii < F->rows && jj >= 0 && jj < F->cols ) {
+                     INDEX(G,i,j) += INDEX(F,ii,jj) * INDEX(H,kk,mm);
+                  }
+               }
+            }
+         }
+      }
+
+      #pragma omp barrier
+      memcpy(&(INDEX(F,row_start,0)), &(INDEX(G,0,0)), G->rows*G->cols*sizeof(matrix_t));
+
+      matrix_destroy(G);
+
+ }
    end_time = omp_get_wtime();
    printf("Total time using local G: %f (sec)\n\n", (end_time-start_time));
 
    printf("\nGlobal G results:\n");
-   matrix_print_some(G, 1615, 1624, 0, 10);
+   matrix_print_some(G, 0, 12, 0, 12);
    printf("\nLocal G results:\n");
-   matrix_print_some(F, 1615, 1624, 0, 10);
+   matrix_print_some(F, 0, 12, 0, 12);
    printf("\n");printf("\n");
 
    for (i = 0;i < F->rows; ++i) {

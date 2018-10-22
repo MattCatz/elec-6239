@@ -1,2 +1,2 @@
 all:
-	gcc -w -Wextra -Wall -Waddress -Og -g main.c ../matrix.c -o p6 -fopenmp -lm
+	gcc -w -Wextra -Wall -Waddress -Og -g lee_main.c -o p6 -fopenmp -lm
