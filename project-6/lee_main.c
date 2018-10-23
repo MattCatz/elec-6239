@@ -60,28 +60,22 @@ matrix* matrix_convolve(matrix* F, matrix* H) {
    matrix* G;
    G = matrix_create(F->rows, F->cols, NULL);
 
+   int M = 12;
+   int W = 3;
+
    #pragma omp parallel shared(F,H,G)
    {
-     int i,j,k,m,ii,jj,kk,mm;
+     int i,j,k,l;
      int x_center, y_center, tid;
 
-     x_center = H->cols / 2;
-     y_center = H->rows / 2;
       tid = omp_get_thread_num();
-      //printf("Thread %d checking in\n",tid);
       #pragma omp for
-      for(i=0; i < F->rows; ++i) {
-         for(j=0; j < F->cols; ++j) {
-            for(k=0; k < H->rows; ++k) {
-               kk = H->rows - 1 - k;
-               for(m=0; m < H->cols; ++m) {
-                  mm = H->cols - 1 - m;
-                  ii = i + (y_center - kk);
-                  jj = j + (x_center - mm);
-
-                  // Only compute indexes inside matrix
-                  if( ii >= 0 && ii < F->rows && jj >= 0 && jj < F->cols ) {
-                     INDEX(G,i,j) += INDEX(F,ii,jj) * INDEX(H,kk,mm);
+      for(i=0; i < M; ++i) {
+         for(j=0; j < M; ++j) {
+            for(k=-(W/2); k <= (W/2); ++k) {
+               for(l=-(W/2); l <= (W/2); ++l) {
+                  if( i-k >= 0 && i-k < M && j-l >= 0 && j-l < M ) {
+                     INDEX(G,i,j) += INDEX(F,i-k,j-l) * INDEX(H,k+(W/2),l+(W/2));
                   }
                }
             }
@@ -152,7 +146,7 @@ int main(int argc, char **argv) {
    // Generating F
    for (i = 0; i < M; i++) {
       for (j = 0; j < M; j++) {
-         INDEX(F,i,j) = j % 2 ? 0 : 1089;
+         INDEX(F,i,j) = 1;//j % 2 ? 0 : 1089;
       }
    }
 
@@ -167,29 +161,8 @@ int main(int argc, char **argv) {
    start_time = omp_get_wtime();
    
    matrix* G;
-   G = matrix_create(F->rows, F->cols, NULL);
+   G = matrix_convolve(F,H);
 
-   #pragma omp parallel shared(F,H,G)
-   {
-     int i,j,k,m;
-     int tid;
-
-      tid = omp_get_thread_num();
-      //printf("Thread %d checking in\n",tid);
-      #pragma omp for
-      for(i=0; i < M; ++i) {
-         for(j=0; j < W; ++j) {
-            for(k=-(W)/2; k < (W)/2; ++k) {
-               for(m=-(W)/2; m < (W)/2; ++m) {
-                  // Only compute indexes inside matrix
-                  if( i+k >= 0 && i+k < M && j+m >= 0 && j+m < M ) {
-                     INDEX(G,i,j) += INDEX(F,i+k,j+m) * INDEX(H,k + W/2, m + W/2);
-                  }
-               }
-            }
-         }
-      }
-   }
    end_time = omp_get_wtime();
    printf("Total time using global G: %f (sec)\n", (end_time-start_time));
 
