@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
     int j,k,chunk,window,offset;
     int half;
     int i,l;
-    M = 8;
+    M = 12;
     W = 3;
 
     half = W/2;
@@ -71,26 +71,17 @@ int main(int argc, char** argv) {
         assert(image != NULL);
 
         // Generating image
-        // p = image;
-        // for (j = M*M; j > 0; j-=1) {
-        //   *p = 1;//1089;
-        //   p += 1;
-        // }
+        p = image;
+        for (j = M*M; j > 0; j-=2) {
+          *p = 1089;
+          p += 2;
+        }
 
-        double test [64] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+        //double test [64] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
-         for (j = 0; j < 64; j++) {
-           image[j] = test[j];
-         }
-
-         // for (j = 0; j < M; j++) {
-         //   for (k = 0; k < M; k++) {
-         //      printf("%2.3f, ", INDEX(image,M,j,k)); // Notice only 3 digits
-         //   }
-         //   printf("\n");
+         // for (j = 0; j < 64; j++) {
+         //   image[j] = test[j];
          // }
-
-         // printf("\n");
 
         // Start at 1 because I dont have to send to myself
         for (dest = 1; dest < world_size; dest++) {
@@ -100,8 +91,19 @@ int main(int argc, char** argv) {
           MPI_Send(&image[offset], window*M, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD); //image
         }
 
-        //convolve(image, filter);
-        // printf("Master thread doing convolution\n");
+        for(i=0; i < chunk; ++i) {
+          for(j=0; j < M; ++j) {
+            for(k=-half; k <= half; ++k) {
+              for(l=-half; l <= half; ++l) {
+                if( (i-k >= 0 && i-k <= chunk) && (j-l >= 0 && j-l < M) ) {
+                  result[(M*i) + j] += image[M*(i-k)+(j-l)]*filter[W*(k+half)+(l+half)];
+                }
+              }
+            }
+          }
+        }
+
+        memcpy(image,result,chunk*M*sizeof(double));
 
         for (j = 1; j < world_size; j++) {
           source = j;
@@ -123,14 +125,14 @@ int main(int argc, char** argv) {
 
 
         /* Note that right now the bottom partition looks past the bottom of the
-           matrix but because our buffer is big enough and we zero it all out
+           matrix but because it doesnt look past buffer and we zero it all out
            there is no effect */
 
         for(i=0; i < chunk; ++i) {
           for(j=0; j < M; ++j) {
             for(k=-half; k <= half; ++k) {
               for(l=-half; l <= half; ++l) {
-                if( (i-k >= -half && i-k <= window + half) && (j-l >= 0 && j-l < M) ) {
+                if( (i-k >= -half && i-k <= chunk + half) && (j-l >= 0 && j-l < M) ) {
                   result[(M*i) + j] += buffer[M*(i-k+half)+(j-l)]*filter[W*(k+half)+(l+half)];
                 }
               }
