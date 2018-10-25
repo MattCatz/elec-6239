@@ -5,9 +5,6 @@
 #include <stdio.h>
 #include <math.h>
 
-#define INDEX(m, cols, row, col) \
-  m[(cols) * row + (col)]
-
 int main(int argc, char** argv) {
     // Initialize the MPI environment
     MPI_Init(NULL, NULL);
@@ -20,24 +17,25 @@ int main(int argc, char** argv) {
     int world_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
-    // Get the name of the processor
-    char processor_name[MPI_MAX_PROCESSOR_NAME];
-    int name_len;
-    MPI_Get_processor_name(processor_name, &name_len);
-
     /* Program begins */
 
     int M,W,source,dest;
     int j,k,chunk,window,offset;
     int half;
     int i,l;
-    M = 3240;
+    
+        int peek_behind = (world_rank * chunk - half) < 0 ? 0:-half;
+        int peek_ahead = (chunk + half) > M ? 0 : half;
+
+M = 3240;
     W = 33;
 
     half = W/2;
 
     // Communication buffers
     double *buffer,*result;
+
+    double *filter,*p;
 
     MPI_Request request ;
     MPI_Status status ;
@@ -50,8 +48,6 @@ int main(int argc, char** argv) {
 
     // We subtract half to get the stuff above us
     offset = (world_rank * chunk - half)*M;
-
-    double *filter,*p;
 
     filter = calloc(W*W, sizeof(double));
     assert(filter != NULL);
@@ -67,8 +63,6 @@ int main(int argc, char** argv) {
     if (world_rank == 0) {
         double *image;
 
-        printf("Thread 0 setting up some stuff\n");
-
         image = calloc(M*M, sizeof(double));
         assert(image != NULL);
 
@@ -78,15 +72,6 @@ int main(int argc, char** argv) {
           *p = 1089;
           p += 2;
         }
-
-        printf("Thread 0 setting up some stuff %d\n", M*M);
-
-
-        //double test [64] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-
-         // for (j = 0; j < 64; j++) {
-         //   image[j] = test[j];
-         // }
 
         // Start at 1 because I dont have to send to myself
         for (dest = 1; dest < world_size; dest++) {
@@ -100,19 +85,16 @@ int main(int argc, char** argv) {
             window = window - half;
           }
 
-          printf("Sending out partition %d to thread %d %d\n",offset,dest,window*M);
           MPI_Send(&image[offset], window*M, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD); //image
         }
 
-        // We do not get this third print statment so probably above this ^^
-        printf("Thread 0 setting up some stuff\n");
-
+        printf("Peek_behind: %d Peek_ahead:%d\n", peek_behind,peek_ahead);
 
         for(i=0; i < chunk; ++i) {
           for(j=0; j < M; ++j) {
             for(k=-half; k <= half; ++k) {
               for(l=-half; l <= half; ++l) {
-                if( (i-k >= 0 && i-k <= chunk+half) && (j-l >= 0 && j-l < M) ) {
+                if( (i-k >= peek_behind && i-k <= chunk+peek_ahead) && (j-l >= 0 && j-l < M) ) {
                   result[(M*i) + j] += image[M*(i-k)+(j-l)]*filter[W*(k+half)+(l+half)];
                 }
               }
@@ -130,7 +112,7 @@ int main(int argc, char** argv) {
 
         for (j = 1615; j < 1624; j++) {
           for (k = 0; k < 10; k++) {
-             printf("%2.3f, ", INDEX(image,M,j,k)); // Notice only 3 digits
+             printf("%2.3f, ", image[M*j+k]); // Notice only 3 digits
           }
           printf("\n");
         }
