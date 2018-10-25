@@ -31,8 +31,8 @@ int main(int argc, char** argv) {
     int j,k,chunk,window,offset;
     int half;
     int i,l;
-    M = 12;
-    W = 3;
+    M = 3240;
+    W = 33;
 
     half = W/2;
 
@@ -42,8 +42,10 @@ int main(int argc, char** argv) {
     MPI_Request request ;
     MPI_Status status ;
 
-    // Determine chunk and padding
+    /* chunk is the number of rows each thread is responsible for */
     chunk = M / world_size;
+    /* since we need information above and below the chunk we call that our
+       window of rows we need to perform convolution on out chunk */
     window = chunk + (W-1);
 
     double *filter,*p;
@@ -77,6 +79,9 @@ int main(int argc, char** argv) {
           p += 2;
         }
 
+        printf("Thread 0 setting up some stuff %d\n", M*M);
+
+
         //double test [64] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
          // for (j = 0; j < 64; j++) {
@@ -85,17 +90,33 @@ int main(int argc, char** argv) {
 
         // Start at 1 because I dont have to send to myself
         for (dest = 1; dest < world_size; dest++) {
-          // We subtract half to get some of the stuff above us
+          // We subtract half to get the stuff above us
           offset = (dest * chunk - half)*M;
-          // printf("Sending out partition %d to thread %d\n",offset,dest);
+
+          if (offset + (window*M) > M*M) {
+            // We have over shot our image buffer
+            printf("Window over shoots the image\n");
+            window = window - half;
+          }
+
+          printf("Sending out partition %d to thread %d %d\n",offset,dest,window*M);
           MPI_Send(&image[offset], window*M, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD); //image
         }
+
+        /* Right now we are over shooting our buffer because of that documented issue
+           below with us over shooting our buffer for the last chunk. For some reason
+           it only affects us when we have a ver large M. Maybe calculate window on a
+           per thread basis.*/
+
+        // We do not get this third print statment so probably above this ^^
+        printf("Thread 0 setting up some stuff\n");
+
 
         for(i=0; i < chunk; ++i) {
           for(j=0; j < M; ++j) {
             for(k=-half; k <= half; ++k) {
               for(l=-half; l <= half; ++l) {
-                if( (i-k >= 0 && i-k <= chunk) && (j-l >= 0 && j-l < M) ) {
+                if( (i-k >= 0 && i-k <= chunk+half) && (j-l >= 0 && j-l < M) ) {
                   result[(M*i) + j] += image[M*(i-k)+(j-l)]*filter[W*(k+half)+(l+half)];
                 }
               }
@@ -111,8 +132,8 @@ int main(int argc, char** argv) {
           MPI_Recv(&image[offset], chunk*M, MPI_DOUBLE, source, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
 
-        for (j = 0; j < M; j++) {
-          for (k = 0; k < M; k++) {
+        for (j = 1615; j < 1624; j++) {
+          for (k = 0; k < 10; k++) {
              printf("%2.3f, ", INDEX(image,M,j,k)); // Notice only 3 digits
           }
           printf("\n");
