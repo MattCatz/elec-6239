@@ -48,13 +48,13 @@ int main(int argc, char** argv) {
        window of rows we need to perform convolution on out chunk */
     window = chunk + (W-1);
 
+    // We subtract half to get the stuff above us
+    offset = (world_rank * chunk - half)*M;
+
     double *filter,*p;
 
     filter = calloc(W*W, sizeof(double));
     assert(filter != NULL);
-
-    buffer = calloc(window*M, sizeof(double));
-    assert(buffer != NULL);
 
     result = calloc(chunk*M, sizeof(double));
     assert(result != NULL);
@@ -95,6 +95,7 @@ int main(int argc, char** argv) {
 
           if (offset + (window*M) > M*M) {
             // We have over shot our image buffer
+            // TODO tell the thread it has a smaller window
             printf("Window over shoots the image\n");
             window = window - half;
           }
@@ -102,11 +103,6 @@ int main(int argc, char** argv) {
           printf("Sending out partition %d to thread %d %d\n",offset,dest,window*M);
           MPI_Send(&image[offset], window*M, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD); //image
         }
-
-        /* Right now we are over shooting our buffer because of that documented issue
-           below with us over shooting our buffer for the last chunk. For some reason
-           it only affects us when we have a ver large M. Maybe calculate window on a
-           per thread basis.*/
 
         // We do not get this third print statment so probably above this ^^
         printf("Thread 0 setting up some stuff\n");
@@ -140,13 +136,15 @@ int main(int argc, char** argv) {
         }
       } else { // Begin not master node stuff
 
+        buffer = calloc(window*M, sizeof(double));
+        assert(buffer != NULL);
 
         source = 0; // Master node
         MPI_Recv(buffer, window*M, MPI_DOUBLE, source, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 
         /* Note that right now the bottom partition looks past the bottom of the
-           matrix but because it doesnt look past buffer and we zero it all out
+           chunk but because it doesnt look past window and we zero it all out
            there is no effect */
 
         for(i=0; i < chunk; ++i) {
