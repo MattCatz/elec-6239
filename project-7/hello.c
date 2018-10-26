@@ -19,35 +19,39 @@ int main(int argc, char** argv) {
 
     /* Program begins */
 
-    int M,W,source,dest;
-    int j,k,chunk,window,offset;
-    int half;
-    int i,l;
-    
-        int peek_behind = (world_rank * chunk - half) < 0 ? 0:-half;
-        int peek_ahead = (chunk + half) > M ? 0 : half;
+    int M,W,half,chunk;
+    int i,j,k,l;
+    int source,dest;
+    int window,offset;
+    int peek_behind,peek_ahead;
+    double start,end;   
 
-M = 3240;
+ 
+    // Communication buffers
+    double *buffer,*result;
+    // Filter and pointer used for looping
+    double *filter,*p;
+
+    M = 3240;
     W = 33;
 
     half = W/2;
 
-    // Communication buffers
-    double *buffer,*result;
-
-    double *filter,*p;
-
-    MPI_Request request ;
-    MPI_Status status ;
 
     /* chunk is the number of rows each thread is responsible for */
     chunk = M / world_size;
+    
     /* since we need information above and below the chunk we call that our
        window of rows we need to perform convolution on out chunk */
     window = chunk + (W-1);
 
+    // Make sure that the first chunk does not undershoot the image
+    peek_behind = (world_rank * chunk - half) < 0 ? 0:-half;
+    // Make sure the last chunk does not overshoot the image
+    peek_ahead = (world_rank * chunk + half) > M ? 0 : half;
+
     // We subtract half to get the stuff above us
-    offset = (world_rank * chunk - half)*M;
+    // offset = (world_rank * chunk - half)*M;
 
     filter = calloc(W*W, sizeof(double));
     assert(filter != NULL);
@@ -73,22 +77,23 @@ M = 3240;
           p += 2;
         }
 
+        start = MPI_Wtime();
+
         // Start at 1 because I dont have to send to myself
         for (dest = 1; dest < world_size; dest++) {
           // We subtract half to get the stuff above us
           offset = (dest * chunk - half)*M;
 
           if (offset + (window*M) > M*M) {
-            // We have over shot our image buffer
-            // TODO tell the thread it has a smaller window
-            printf("Window over shoots the image\n");
-            window = window - half;
+            // Make sure that we do not send anything past our image
+             window = window - half;
           }
 
-          MPI_Send(&image[offset], window*M, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD); //image
+          MPI_Send(&image[offset], window*M, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD);
         }
 
-        printf("Peek_behind: %d Peek_ahead:%d\n", peek_behind,peek_ahead);
+        // This is for the case that chunk = M
+        peek_ahead = (chunk + half) > M ? 0 : half;
 
         for(i=0; i < chunk; ++i) {
           for(j=0; j < M; ++j) {
@@ -110,12 +115,17 @@ M = 3240;
           MPI_Recv(&image[offset], chunk*M, MPI_DOUBLE, source, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
 
-        for (j = 1615; j < 1624; j++) {
-          for (k = 0; k < 10; k++) {
-             printf("%2.3f, ", image[M*j+k]); // Notice only 3 digits
+	end = MPI_Wtime();
+
+	printf("\nTotal time with %d threads: %f\n\n",world_size,end-start);
+
+        for (j = 1618; j < 1623; j++) {
+          for (k = 0; k < 18; k++) {
+             printf("%4.3f, ", image[M*j+k]); // Notice only 3 digits
           }
           printf("\n");
         }
+	printf("\n");
       } else { // Begin not master node stuff
 
         buffer = calloc(window*M, sizeof(double));
@@ -124,16 +134,11 @@ M = 3240;
         source = 0; // Master node
         MPI_Recv(buffer, window*M, MPI_DOUBLE, source, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-
-        /* Note that right now the bottom partition looks past the bottom of the
-           chunk but because it doesnt look past window and we zero it all out
-           there is no effect */
-
         for(i=0; i < chunk; ++i) {
           for(j=0; j < M; ++j) {
             for(k=-half; k <= half; ++k) {
               for(l=-half; l <= half; ++l) {
-                if( (i-k >= -half && i-k <= chunk + half) && (j-l >= 0 && j-l < M) ) {
+                if( (i-k >= peek_behind && i-k <= chunk + peek_ahead) && (j-l >= 0 && j-l < M) ) {
                   result[(M*i) + j] += buffer[M*(i-k+half)+(j-l)]*filter[W*(k+half)+(l+half)];
                 }
               }
