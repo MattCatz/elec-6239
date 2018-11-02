@@ -11,7 +11,7 @@
 
 typedef float matrix_t;
 
-// This is platform dependent stuff
+// This is the default block size
 const unsigned int BLOCK_SIZE = 16;
 
 // Size of matrix
@@ -119,6 +119,16 @@ float percent_error(matrix_t *C) {
   return (total_error * 100) / pow(M,2);
 }
 
+void matrix_print_some(matrix_t *m, const size_t X1, const size_t X2, const size_t Y1, const size_t Y2) {
+   int i,j;
+   for (i = X1; i <= X2; i++) {
+      for (j = Y1; j < Y2; j++) {
+         printf("%.3f, ", INDEX(m,i,j)); // Notice only 3 digits
+      }
+      printf("\n");
+   }
+}
+
 int main(void) {
     unsigned int i,j;
 
@@ -133,6 +143,10 @@ int main(void) {
 
     // Used for timing
     float msecTotal = 0.0f;
+
+
+    printf("Using block size %d...\n", BLOCK_SIZE);
+
 
     // Allocate host memory for matrices
     // We have to cast our calloc/malloc
@@ -201,6 +215,10 @@ int main(void) {
 
     printf("Percent error is %.3f\n", percent_error(ch));
 
+    printf("\nLocal G results:\n");
+    matrix_print_some(ch, 2044, 2052, 0, 8);
+    printf("\n");
+
     printf("Computing result using CUDA Kernel and global memory...\n");
 
     cudaDeviceSynchronize();
@@ -223,6 +241,10 @@ int main(void) {
     printf("done in %.3f (sec)\n", msecTotal/1000.0);
 
     printf("Percent error is %.3f\n", percent_error(ch));
+
+    printf("\nGlobal G results:\n");
+    matrix_print_some(ch, 2044, 2052, 0, 8);
+    printf("\n");
 
     // Clean up memory
     free(ah);
