@@ -1,0 +1,6 @@
+This runs a script in the current directory via the queue system
+Report problems and post questions to the HPC staff (hpc@asc.edu)
+ 
+ERROR:  File ./matrixMul has a dot and slash in front of it
+        please submit without the ./
+ 
