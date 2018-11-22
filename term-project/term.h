@@ -33,8 +33,8 @@ void generate_sobel(matrix_t *hx, matrix_t *hy) {
 	const matrix_t sobel_x[9] = {-1,0,1,-2,0,2,-1,0,1};
 	const matrix_t sobel_y[9] = {-1,-2,-1,0,0,0,1,2,1};
 
-	memcpy(hx, sobel_x, 9);
-	memcpy(hy, sobel_y, 9);
+	memcpy(hx, sobel_x, 9*sizeof(matrix_t));
+	memcpy(hy, sobel_y, 9*sizeof(matrix_t));
 }
 
 void get_image(matrix_t *image) {
