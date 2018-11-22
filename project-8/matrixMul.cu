@@ -11,97 +11,99 @@
 
 typedef float matrix_t;
 
-// This is platform dependent stuff
-const int BLOCK_SIZE = 32;
+// This is the default block size
+const unsigned int BLOCK_SIZE = 16;
 
 // Size of matrix
 // Make sure that matrix is divisable by block_size
 const unsigned int M = 4096;
+
+// Size of shared memory array
+const unsigned int Mds = BLOCK_SIZE;
 
 #define INDEX(m, row, col) \
   m[(M) * (row) + (col)]
 
 __global__ void kernel_global(matrix_t *C, matrix_t *A, matrix_t *B) {
     matrix_t sum;
-    unsigned int row,col,k;
+    unsigned int rowd,cold,k,Bx,By,Tx,Ty;
+
+    Bx = blockIdx.x;
+    By = blockIdx.y;
+    Tx = threadIdx.x;
+    Ty = threadIdx.y;
 
     sum = 0;
 
-    row = blockIdx.y * BLOCK_SIZE + threadIdx.y;
-    col = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    rowd = By * BLOCK_SIZE + Ty;
+    cold = Bx * BLOCK_SIZE + Tx;
 
     for (k = 0; k < M; ++k) {
-        sum += INDEX(A,row,k) * INDEX(B,k,col);
+        sum += INDEX(A,rowd,k) * INDEX(B,k,cold);
     }
  
     // Write the block sub-matrix to device memory;
     // each thread writes one element
-    INDEX(C,row,col) = sum;
+    INDEX(C,rowd,cold) = sum;
 }
 
 __global__ void kernel_local(matrix_t *C, matrix_t *A, matrix_t *B) {
-    unsigned int a,b,k,aBegin,aEnd,bBegin,aStep,bStep;
+    unsigned int a,b,k,start_a,end,start_b,start_c,offset_a,offset_b;
+    unsigned int Bx,By,Tx,Ty;
+    unsigned int rowd,cold,rowds,colds;
     matrix_t sum;
 
-    // Index of the first sub-matrix of A processed by the block
-    aBegin = M * BLOCK_SIZE * blockIdx.y;
+    __shared__ matrix_t ads[Mds][Mds];
+    __shared__ matrix_t bds[Mds][Mds];
 
-    // Index of the last sub-matrix of A processed by the block
-    aEnd   = aBegin + M - 1;
+    Bx = blockIdx.x;
+    By = blockIdx.y;
+    Tx = threadIdx.x;
+    Ty = threadIdx.y;
 
-    // Step size used to iterate through the sub-matrices of A
-    aStep  = BLOCK_SIZE;
+    // Start of the blocks
+    start_a = M * BLOCK_SIZE * By;
+    start_b = BLOCK_SIZE * Bx;
+    start_c = M * BLOCK_SIZE * By + BLOCK_SIZE * Bx;
 
-    // Index of the first sub-matrix of B processed by the block
-    bBegin = BLOCK_SIZE * blockIdx.x;
+    // Offset between loop iterations
+    offset_a = BLOCK_SIZE;
+    offset_b = BLOCK_SIZE * M;
 
-    // Step size used to iterate through the sub-matrices of B
-    bStep  = BLOCK_SIZE * M;
+    // End of the blocks
+    end = start_a + M - 1;
 
     sum = 0;
 
-    // Loop over all the sub-matrices of A and B
-    // required to compute the block sub-matrix
-    for (a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep) {
-        // Declaration of the shared memory array As used to
-        // store the sub-matrix of A
-        __shared__ matrix_t As[BLOCK_SIZE][BLOCK_SIZE];
+    rowd = M * Ty;
+    cold = Tx + start_c;
 
-        // Declaration of the shared memory array Bs used to
-        // store the sub-matrix of B
-        __shared__ matrix_t Bs[BLOCK_SIZE][BLOCK_SIZE];
+    rowds = Ty;
+    colds = Tx;
 
-        // Load the matrices from device memory
-        // to shared memory; each thread loads
-        // one element of each matrix
-        As[threadIdx.y][threadIdx.x] = A[a + M * threadIdx.y + threadIdx.x];
-        Bs[threadIdx.y][threadIdx.x] = B[b + M * threadIdx.y + threadIdx.x];
+    for (a = start_a, b = start_b; a <= end; a += offset_a, b += offset_b) {
 
-        // Synchronize to make sure the matrices are loaded
+        // Load into shared memory
+        ads[rowds][colds] = A[a + M * Ty + Tx];
+        bds[rowds][colds] = B[b + M * Ty + Tx];
+
+        // Wait for all threads to get here
         __syncthreads();
 
-        // Multiply the two matrices together;
-        // each thread computes one element
-        // of the block sub-matrix
-        #pragma unroll
         for (k = 0; k < BLOCK_SIZE; ++k) {
-            sum += As[threadIdx.y][k] * Bs[k][threadIdx.x];
+            sum += ads[Ty][k] * bds[k][Tx];
         }
 
-        // Synchronize to make sure that the preceding
-        // computation is done before loading two new
-        // sub-matrices of A and B in the next iteration
+        // Wait for all threads to get here
         __syncthreads();
     }
 
-    // Write the block sub-matrix to device memory;
-    // each thread writes one element
-    unsigned int c = M * BLOCK_SIZE * blockIdx.y + BLOCK_SIZE * blockIdx.x;
-    C[c + M * threadIdx.y + threadIdx.x] = sum;
+    // Write back to global memory
+    C[rowd + cold] = sum;
 }
 
-matrix_t percent_error(matrix_t *C) {
-    matrix_t total_error, error;
+float percent_error(matrix_t *C) {
+    float total_error, error;
     unsigned int i,j;
 
     total_error = 0;
@@ -117,53 +119,70 @@ matrix_t percent_error(matrix_t *C) {
   return (total_error * 100) / pow(M,2);
 }
 
+void matrix_print_some(matrix_t *m, const size_t X1, const size_t X2, const size_t Y1, const size_t Y2) {
+   int i,j;
+   for (i = X1; i <= X2; i++) {
+      for (j = Y1; j < Y2; j++) {
+         printf("%.3f, ", INDEX(m,i,j)); // Notice only 3 digits
+      }
+      printf("\n");
+   }
+}
+
 int main(void) {
     unsigned int i,j;
 
     // Pointers for host
-    matrix_t *A,*B,*C;
+    matrix_t *ah,*bh,*ch;
 
     // Pointers for device memory
-    matrix_t *d_A, *d_B, *d_C;
+    matrix_t *ad, *bd, *cd;
 
     // Used to measure performance
     cudaEvent_t start, stop;
+
+    // Used for timing
+    float msecTotal = 0.0f;
+
+
+    printf("Using block size %d...\n", BLOCK_SIZE);
+
 
     // Allocate host memory for matrices
     // We have to cast our calloc/malloc
     // because cuda is technically a subset
     // of c++ not vanilla c.
-    A = (matrix_t *) calloc(M*M, sizeof(matrix_t));
-    assert(A != NULL);
+    ah = (matrix_t *) calloc(M*M, sizeof(matrix_t));
+    assert(ah != NULL);
 
-    B = (matrix_t *) calloc(M*M, sizeof(matrix_t));
-    assert(B != NULL);
+    bh = (matrix_t *) calloc(M*M, sizeof(matrix_t));
+    assert(bh != NULL);
 
-    C = (matrix_t *) calloc(M*M, sizeof(matrix_t));
-    assert(C != NULL);
+    ch = (matrix_t *) calloc(M*M, sizeof(matrix_t));
+    assert(ch != NULL);
 
     // Gen A on host
     for (i = 0; i < M; i++) {
         for (j = 0; j < M; j++) {
-            INDEX(A,i,j) = ((i+1.0)*(j+1.0)) * (1.0/M);
+            INDEX(ah,i,j) = ((i+1.0)*(j+1.0)) * (1.0/M);
         }
     }
 
     // Gen B on host
     for (i = 0; i < M; i++) {
         for (j = 0; j < M; j++) {
-            INDEX(B,i,j) = (j+1.0)/(i+1.0);
+            INDEX(bh,i,j) = (j+1.0)/(i+1.0);
         }
     }
 
     // Allocate device memory for matricies
-    checkCudaErrors(cudaMalloc((void **) &(d_A), M*M*sizeof(matrix_t)));
-    checkCudaErrors(cudaMalloc((void **) &(d_B), M*M*sizeof(matrix_t)));
-    checkCudaErrors(cudaMalloc((void **) &(d_C), M*M*sizeof(matrix_t)));
+    checkCudaErrors(cudaMalloc((void **) &(ad), M*M*sizeof(matrix_t)));
+    checkCudaErrors(cudaMalloc((void **) &(bd), M*M*sizeof(matrix_t)));
+    checkCudaErrors(cudaMalloc((void **) &(cd), M*M*sizeof(matrix_t)));
 
     // Copy host memory to device
-    checkCudaErrors(cudaMemcpy(d_A, A, M*M*sizeof(matrix_t), cudaMemcpyHostToDevice));
-    checkCudaErrors(cudaMemcpy(d_B, B, M*M*sizeof(matrix_t), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(ad, ah, M*M*sizeof(matrix_t), cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(bd, bh, M*M*sizeof(matrix_t), cudaMemcpyHostToDevice));
 
     // Allocate CUDA events that we'll use for timing
     checkCudaErrors(cudaEventCreate(&start));
@@ -173,7 +192,7 @@ int main(void) {
     dim3 threads(BLOCK_SIZE, BLOCK_SIZE);
     dim3 grid(M / threads.x, M / threads.y);
 
-    printf("Computing result using CUDA Kernel...\n");
+    printf("Computing result using CUDA Kernel and local memory...\n");
 
     cudaDeviceSynchronize();
 
@@ -181,33 +200,59 @@ int main(void) {
     checkCudaErrors(cudaEventRecord(start, NULL));
 
     // Execute the kernel
-    kernel_local <<< grid, threads >>>(d_C, d_A, d_B);
-    // Execute the kernel
-    kernel_global <<< grid, threads >>>(d_C, d_A, d_B);
+    kernel_local <<< grid, threads >>>(cd, ad, bd);
 
     // Copy result from device to host
-    checkCudaErrors(cudaMemcpy(C, d_C, M*M*sizeof(matrix_t), cudaMemcpyDeviceToHost));
+    checkCudaErrors(cudaMemcpy(ch, cd, M*M*sizeof(matrix_t), cudaMemcpyDeviceToHost));
 
     // Record the stop event
     checkCudaErrors(cudaEventRecord(stop, NULL));
-
-    // Mit for the stop event to complete
     checkCudaErrors(cudaEventSynchronize(stop));
 
-    float msecTotal = 0.0f;
     checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
 
     printf("done in %.3f (sec)\n", msecTotal/1000.0);
 
-    printf("Percent error is %.3f\n", percent_error(C));
+    printf("Percent error is %.3f\n", percent_error(ch));
+
+    printf("\nLocal G results:\n");
+    matrix_print_some(ch, 2044, 2052, 0, 8);
+    printf("\n");
+
+    printf("Computing result using CUDA Kernel and global memory...\n");
+
+    cudaDeviceSynchronize();
+
+    // Record the start event
+    checkCudaErrors(cudaEventRecord(start, NULL));
+
+    // Execute the kernel
+    kernel_global <<< grid, threads >>>(cd, ad, bd);
+
+    // Copy result from device to host
+    checkCudaErrors(cudaMemcpy(ch, cd, M*M*sizeof(matrix_t), cudaMemcpyDeviceToHost));
+
+    // Record the stop event
+    checkCudaErrors(cudaEventRecord(stop, NULL));
+    checkCudaErrors(cudaEventSynchronize(stop));
+
+    checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+
+    printf("done in %.3f (sec)\n", msecTotal/1000.0);
+
+    printf("Percent error is %.3f\n", percent_error(ch));
+
+    printf("\nGlobal G results:\n");
+    matrix_print_some(ch, 2044, 2052, 0, 8);
+    printf("\n");
 
     // Clean up memory
-    free(A);
-    free(B);
-    free(C);
-    checkCudaErrors(cudaFree(d_A));
-    checkCudaErrors(cudaFree(d_B));
-    checkCudaErrors(cudaFree(d_C));
+    free(ah);
+    free(bh);
+    free(ch);
+    checkCudaErrors(cudaFree(ad));
+    checkCudaErrors(cudaFree(bd));
+    checkCudaErrors(cudaFree(cd));
 
     /* end multiplication */
 
