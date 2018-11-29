@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
     // Communication buffers
 	matrix_t *buffer,*edge;
     // Filter and pointer used for looping
-	matrix_t *filter,*p,*smoothed,*hx,*hy,gx,gy;
+	matrix_t *filter,*smoothed,*hx,*hy;
 
 	half = W_SMOOTHING/2;
 
@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
     // We subtract half to get the stuff above us
     // offset = (world_rank * chunk - half)*M;
 
-	filter = calloc(W_SMOOTHING*W_SMOOTHING, sizeof(matrix_t));
+	filter = calloc(W_SMOOTHING, sizeof(matrix_t));
 	assert(filter != NULL);
 
 	hx = calloc(W_EDGE*W_EDGE, sizeof(matrix_t));
@@ -67,10 +67,12 @@ int main(int argc, char** argv) {
 	smoothed = calloc(chunk*M, sizeof(matrix_t));
 	assert(smoothed != NULL);
 
-
+	printf("generating filter\n");
     // Generating filter
 	generate_guassian(filter);
 	generate_sobel(hx,hy);
+
+	printf("done generating filter\n");
 
 	if (world_rank == 0) {
 		matrix_t *image;
@@ -99,49 +101,64 @@ int main(int argc, char** argv) {
         // This is for the case that chunk = M
 		peek_ahead = (chunk + half) > M ? 0 : half;
 
+		printf("starting convolution\n");
+
 		for(i=0; i < chunk; ++i) {
 			for(j=0; j < M; ++j) {
-				for(k=-half; k <= half; ++k) {
-					for(l=-half; l <= half; ++l) {
-						if( (i-k >= peek_behind && i-k < chunk+peek_ahead) && (j-l >= 0 && j-l < M) ) {
-							if (M*(i-k)+(j-l) >= M*M) printf("%d i %d j %d k %d l %d chunk %d\n", M*(i-k)+(j-l),i,j,k,l,chunk);
-							smoothed[(M*i) + j] += image[M*(i-k)+(j-l)]*filter[W_SMOOTHING*(k+half)+(l+half)];
-						}
-					}
+				matrix_t sum = 0;
+				int start_x = j - half >= 0 ? -half :  -j;
+				int end_x = M - j > half ? half : (M - j);
+				for (k = start_x; k <= end_x; ++k) {
+					sum += image[(M*i)+j+k]*filter[k+half];
+					 //if (i < 1 ) printf(" %f %f %f\n", filter[k+half], image[(M*i)+j+k], sum);
 				}
+				smoothed[(M*i) + j] = sum;
+			}
+		}
+
+		for(i=0; i < chunk; ++i) {
+			for(j=0; j < M; ++j) {
+				matrix_t sum = 0;
+				int start_y = i - half >= 0 ? -half :  -i;
+				int end_y = M - i > half ? half : (M - i);
+				for (k = start_y; k < end_y; ++k) {
+					sum += smoothed[(M*(i+k))+j]*filter[k+half];
+					//if (i < 1 ) printf(" %f %f %f\n", filter[k+half], smoothed[(M*(i+k))+j], sum);
+				}
+				image[(M*i) + j] = sum;
 			}
 		}
 
 		printf("done\n");
 
 
-		half = W_EDGE/2;
-      // Make sure that the first chunk does not undershoot the image
-		peek_behind = (world_rank * chunk - half) < 0 ? 0:-half;
-    	        // This is for the case that chunk = M
-		peek_ahead = (chunk + half) > M ? 0 : half;
+		// half = W_EDGE/2;
+  //     // Make sure that the first chunk does not undershoot the image
+		// peek_behind = (world_rank * chunk - half) < 0 ? 0:-half;
+  //   	        // This is for the case that chunk = M
+		// peek_ahead = (chunk + half) > M ? 0 : half;
 
-		for(i=0; i < chunk; ++i) {
-			for(j=0; j < M; ++j) {
-				gx = 0;
-				gy = 0;
-				for(k=-half; k <= half; ++k) {
-					for(l=-half; l <= half; ++l) {
-						// TODO Figure out if this is the right limits
-						if( (i-k >= peek_behind && i-k < chunk+peek_ahead) && (j-l >= 0 && j-l < M) ) {
-							if (M*(i-k)+(j-l) >= M*M*.5) printf("%d %d %d\n", M*(i-k)+(j-l),chunk,i-k);
-							gx += smoothed[M*(i-k)+(j-l)]*hx[W_EDGE*(k+half)+(l+half)];
-							gy += smoothed[M*(i-k)+(j-l)]*hy[W_EDGE*(k+half)+(l+half)];
-						}
-					}
-				}
-				edge[(M*i) + j] = sqrtf(gx*gx+gy*gy);
-			}
-		}
+		// for(i=0; i < chunk; ++i) {
+		// 	for(j=0; j < M; ++j) {
+		// 		gx = 0;
+		// 		gy = 0;
+		// 		for(k=-half; k <= half; ++k) {
+		// 			for(l=-half; l <= half; ++l) {
+		// 				// TODO Figure out if this is the right limits
+		// 				if( (i-k >= peek_behind && i-k < chunk+peek_ahead) && (j-l >= 0 && j-l < M) ) {
+		// 					if (M*(i-k)+(j-l) >= M*M*.5) printf("%d %d %d\n", M*(i-k)+(j-l),chunk,i-k);
+		// 					gx += smoothed[M*(i-k)+(j-l)]*hx[W_EDGE*(k+half)+(l+half)];
+		// 					gy += smoothed[M*(i-k)+(j-l)]*hy[W_EDGE*(k+half)+(l+half)];
+		// 				}
+		// 			}
+		// 		}
+		// 		edge[(M*i) + j] = sqrtf(gx*gx+gy*gy);
+		// 	}
+		// }
 
 		printf("done\n");
 
-		memcpy(image,edge,chunk*M*sizeof(matrix_t));
+		//memcpy(image,smoothed,chunk*M*sizeof(matrix_t));
 
 		for (j = 1; j < world_size; j++) {
 			source = j;
@@ -152,7 +169,13 @@ int main(int argc, char** argv) {
 		end = MPI_Wtime();
 
 		printf("\nTotal time with %d threads: %f\n\n",world_size,end-start);
-		save_ppm("Leaves_edge.ppm", image);
+		save_ppm("Leaves_blur.ppm", smoothed);
+		printf("Saved Picture\n");
+
+		for (i = 6000; i < 6010; ++i)
+		{
+			printf("%f %f\n", smoothed[i], image[i]);
+		}
       } else { // Begin not master node stuff
 
       	buffer = calloc(window*M, sizeof(matrix_t));
@@ -181,4 +204,5 @@ int main(int argc, char** argv) {
 
     // Finalize the MPI environment.
      MPI_Finalize();
+     return 0;
   }

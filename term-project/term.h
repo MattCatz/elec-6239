@@ -15,17 +15,15 @@ m[(col_length) * (row) + (col)]
 #define MPI_MATRIX_T MPI_FLOAT;
 typedef float matrix_t;
 
-void generate_guassian(matrix_t *f) {
-	unsigned int i,j;
+void generate_guassian(matrix_t *guassian) {
+	int i;
+	const int L = (W_SMOOTHING - 1)/2;
 	matrix_t exponent;
-	const matrix_t L = (W_SMOOTHING - 1)*.5;
-	const matrix_t temp = 1 / (2*M_PI*SIGMA*SIGMA);
+	const matrix_t temp = 1 / (sqrt(2*M_PI)*SIGMA);
 
 	for (i=0;i<W_SMOOTHING;i++) {
-		for (j=0;j<W_SMOOTHING;j++) {
-			exponent = ((i-L)*(i-L) + (j-L)*(j-L))/(2*SIGMA*SIGMA);
-			INDEX(f,i,j,W_SMOOTHING) = temp * exp(-exponent);
-		}
+		exponent = ((i-L)*(i-L))/(2*SIGMA*SIGMA);
+		guassian[i] = temp * exp(-exponent);
 	}
 }
 
@@ -38,7 +36,7 @@ void generate_sobel(matrix_t *hx, matrix_t *hy) {
 }
 
 void get_image(matrix_t *image) {
-	unsigned int i,j;
+	unsigned int i;
 	unsigned char in[M*M];
 	matrix_t *px;
 	FILE *fp;
@@ -59,7 +57,7 @@ void get_image(matrix_t *image) {
 }
 
 void save_ppm(char *name, matrix_t *image) {
-	unsigned int i,j;
+	unsigned int i;
 	unsigned char out[M*M];
 	matrix_t *px;
 	FILE *fp;
