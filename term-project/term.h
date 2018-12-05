@@ -7,7 +7,7 @@
 #define M 2048
 #define W_SMOOTHING 15
 #define W_EDGE 3
-#define SIGMA 1.5f
+#define SIGMA 1.5
 
 #define INDEX(m, row, col, col_length) \
 m[(col_length) * (row) + (col)]
@@ -28,8 +28,10 @@ void generate_guassian(matrix_t *guassian) {
 }
 
 void generate_sobel(matrix_t *hx, matrix_t *hy) {
-	const matrix_t sobel_x[9] = {-1,0,1,-2,0,2,-1,0,1};
-	const matrix_t sobel_y[9] = {-1,-2,-1,0,0,0,1,2,1};
+	// const matrix_t sobel_x[9] = {-1,0,1,-2,0,2,-1,0,1};
+	// const matrix_t sobel_y[9] = {-1,-2,-1,0,0,0,1,2,1};
+	const matrix_t sobel_x[9] = {1,0,-1,-2,0,2,-1,0,1};
+	const matrix_t sobel_y[9] = {1,2,1,0,0,0,1,2,1};
 
 	memcpy(hx, sobel_x, 9*sizeof(matrix_t));
 	memcpy(hy, sobel_y, 9*sizeof(matrix_t));
