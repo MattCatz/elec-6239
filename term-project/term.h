@@ -4,6 +4,8 @@
 #include <math.h>
 #include <string.h>
 
+#define M_PI 3.14159265358
+
 #define M 2048
 #define W_SMOOTHING 15
 #define W_EDGE 3
@@ -66,7 +68,7 @@ void save_ppm(char *name, matrix_t *image) {
 
 	fp = fopen(name, "w");
 
-	fprintf(fp, "P5\n %d %d \n 255 \n", M, M);
+	fprintf(fp, "P5\n %d %d \n 255\n", M, M);
 
 	for (i=0,px=image;i<M*M;++i,++px) {
 		out[i] = lround(*px);
@@ -76,59 +78,3 @@ void save_ppm(char *name, matrix_t *image) {
 
 	fclose(fp);
 }
-
-// int main() {
-// 	char ch;
-// 	FILE *fp;
-// 	unsigned char *final_image;
-// 	matrix_t *image, *smoothing, *hx, *hy;
-// 	unsigned int i, j;
-
-// 	image = calloc(M * M, sizeof(matrix_t));
-// 	smoothing = calloc(W_SMOOTHING*W_SMOOTHING, sizeof(matrix_t));
-// 	hx = calloc(W_EDGE*W_EDGE, sizeof(matrix_t));
-// 	hy = calloc(W_EDGE*W_EDGE, sizeof(matrix_t));
-// 	final_image = calloc(M * M, sizeof(char));
-
-// 	get_image(image);
-
-// 	// char file_name[] = "Leaves_noise.bin";
-
-// 	// //
-// 	// // Read file from disk
-// 	// //
-
-// 	// fp = fopen(file_name, "r"); // read mode
-
-// 	// if (fp == NULL) {
-// 	// 	perror("Error while opening the file.\n");
-// 	// 	exit(EXIT_FAILURE);
-// 	// }
-
-// 	// assert(M * M == fread(final_image, 1, M * M, fp));
-
-// 	// fclose(fp);
-
-// 	//
-// 	// Done reading file from disk
-// 	//
-
-// 	generate_guassian(smoothing);
-// 	generate_sobel(hx,hy);
-
-// 	//
-// 	// Lets try to write this back to an image to see what it looks like
-// 	//
-
-// 	// fp = fopen("Leaves_noise.ppm", "w");
-
-// 	// fprintf(fp, "P5\n %d %d \n 255 \n", M, M);
-
-// 	// fwrite(final_image, 1, M * M, fp);
-
-// 	// fclose(fp);
-
-// 	save_ppm("Leaves_noise.ppm", image);
-
-// 	return 0;
-// }

@@ -34,20 +34,84 @@ void collect_partitions(matrix_t *image, int window, int chunk) {
 	}
 }
 
-void master_node() {}
+void gaussian_convolution(matrix_t* restrict image, matrix_t* restrict filter, matrix_t* restrict result, int chunk, int half, int window) {
+	int i,j,k,start_x,start_y,end_x,end_y;
+	matrix_t sum;
 
-void salve_node() {}
+	for(i=0; i < chunk; ++i) {
+		matrix_t temp[M];
+
+		// if (world_rank == 1) printf("starting part one %d\n", i);
+
+		/* Do the row wise de-noise convolution */
+		for(j=0; j < M; ++j) {
+			sum = 0;
+			start_y = (world_rank * chunk) + i - half >= 0 ? -half : -i;
+			end_y = i + half < window - half ? half : (chunk - i - 1);
+			for (k = start_y; k <= end_y; ++k) {
+				// if (world_rank == 1 ) printf("%d %d %d\n", k, start_y,end_y);
+				sum += image[(M*(i+k))+j]*filter[-k+half];
+			}
+			temp[j] = sum;
+		}
+
+		// printf("starting next part %d\n", world_rank);
+
+		/* Do the column wise de-noise convolution */
+		for(j=0; j < M; ++j) {
+			sum = 0;
+			start_x = j - half >= 0 ? -half :  -j;
+			end_x = M - j > half ? half : (M - j - 1);
+			for (k = start_x; k <= end_x; ++k) {
+				sum += temp[j+k]*filter[-k+half];
+			}
+			result[(M*i) + j] = sum;
+		}
+	}
+}
+
+matrix_t max = 0;
+
+void sobel_convolution(matrix_t* restrict image, matrix_t* restrict hx, matrix_t* restrict hy, matrix_t* restrict result, int chunk, int half, int window) {
+	int i,j,k,start_x,start_y,end_x,end_y;
+	matrix_t sum_x,sum_y;
+
+	for(i=0; i < chunk; ++i) {
+		matrix_t gx[M],gy[M];
+		for(j=0; j < M; ++j) {
+			gx[j] = 0;
+			gy[j] = 0;
+			start_y = (world_rank * chunk) + i - half >= 0 ? -half : -i;
+			end_y = i + half < window - half ? half : (chunk - i - 1);
+			for (k = start_y; k <= end_y; ++k) {
+				gy[j] += image[(M*(i+k))+j]*hy[-k+half];
+				gx[j] += image[(M*(i+k))+j]*hx[-k+half];
+			}
+		}
+
+		for(j=0; j < M; ++j) {
+			sum_x = 0;
+			sum_y = 0;
+			start_x = j - half >= 0 ? -half :  -j;
+			end_x = M - j > half ? half : (M - j - 1);
+			for (k = start_x; k <= end_x; ++k) {
+				sum_x += gx[j+k]*hy[-k+half];
+				sum_y += gy[j+k]*hx[-k+half];
+			}
+			max = sqrtf(sum_x*sum_x+sum_y*sum_y) > max ? sqrtf(sum_x*sum_x+sum_y*sum_y) : max;
+			result[(M*i) + j] = sqrtf(sum_x*sum_x+sum_y*sum_y) >= 40 ? 255: 0;
+		}
+	}
+}
 
 int main(int argc, char** argv) {
     // Initialize the MPI environment
 	MPI_Init(NULL, NULL);
 
     // Get the number of processes
-	// int world_size;
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
     // Get the rank of the process
-	// int world_rank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
     /* Program begins */
@@ -55,12 +119,11 @@ int main(int argc, char** argv) {
 	int half,edge_half,chunk;
 	int i,j,k;
 	int source,dest;
-	int window,offset;
+	int window;
 	double start,end;
 
-
     // Communication buffers
-	matrix_t *buffer,*edge;
+	matrix_t *buffer;
     // Filter and pointer used for looping
 	matrix_t *filter,*smoothed,*hx,*hy;
 
@@ -68,16 +131,12 @@ int main(int argc, char** argv) {
 
 	edge_half = W_EDGE/2;
 
-
     /* chunk is the number of rows each thread is responsible for */
 	chunk = M / world_size;
 
     /* since we need information above and below the chunk we call that our
        window of rows we need to perform convolution on out chunk */
 	window = chunk + (W_SMOOTHING-1);
-
-    // We subtract half to get the stuff above us
-    // offset = (world_rank * chunk - half)*M;
 
 	filter = calloc(W_SMOOTHING, sizeof(matrix_t));
 	assert(filter != NULL);
@@ -110,31 +169,7 @@ int main(int argc, char** argv) {
 		// Send out the original image
 		send_partitions(image, window, chunk, half);
 
-		for(i=0; i < chunk; ++i) {
-			matrix_t temp[M];
-
-			/* Do the row wise de-noise convolution */
-			for(j=0; j < M; ++j) {
-				matrix_t sum = 0;
-				int start_y = i - half >= 0 ? -half : -i;
-				int end_y = M - i > half ? half : (M - i - 1);
-				for (k = start_y; k <= end_y; ++k) {
-					sum += image[(M*(i+k))+j]*filter[-k+half];
-				}
-				temp[j] = sum;
-			}
-
-			/* Do the column wise de-noise convolution */
-			for(j=0; j < M; ++j) {
-				matrix_t sum = 0;
-				int start_x = j - half >= 0 ? -half :  -j;
-				int end_x = M - j > half ? half : (M - j - 1);
-				for (k = start_x; k <= end_x; ++k) {
-					sum += temp[j+k]*filter[-k+half];
-				}
-				smoothed[(M*i) + j] = sum;
-			}
-		}
+		gaussian_convolution(image,filter,smoothed,chunk,half,window);
 
 		memcpy(image,smoothed,chunk*M*sizeof(matrix_t));
 
@@ -143,31 +178,7 @@ int main(int argc, char** argv) {
 		// TODO use the correct half to shrink memory
 		send_partitions(image, window, chunk, half);
 
-		for(i=0; i < chunk; ++i) {
-			matrix_t gx[M],gy[M];
-			for(j=0; j < M; ++j) {
-				gx[j] = 0;
-				gy[j] = 0;
-				int start_y = i - edge_half >= 0 ? -edge_half : -i;
-				int end_y = M - i > edge_half ? edge_half : (M - i - 1);
-				for (k = start_y; k <= end_y; ++k) {
-					gy[j] += image[(M*(i+k))+j]*hy[-k+edge_half];
-					gx[j] += image[(M*(i+k))+j]*hx[-k+edge_half];
-				}
-			}
-
-			for(j=0; j < M; ++j) {
-				matrix_t sum_x = 0;
-				matrix_t sum_y = 0;
-				int start_x = j - edge_half >= 0 ? -edge_half :  -j;
-				int end_x = M - j > edge_half ? edge_half : (M - j - 1);
-				for (k = start_x; k <= end_x; ++k) {
-					sum_x += gx[j+k]*hy[-k+edge_half];
-					sum_y += gy[j+k]*hx[-k+edge_half];
-				}
-				smoothed[(M*i) + j] = sqrtf(sum_x*sum_x+sum_y*sum_y);
-			}
-		}
+		sobel_convolution(image,hx,hy,smoothed,chunk,edge_half, window);
 
 		memcpy(image,smoothed,chunk*M*sizeof(matrix_t));
 
@@ -186,71 +197,22 @@ int main(int argc, char** argv) {
         source = 0; // Master node
         MPI_Recv(buffer, window*M, MPI_FLOAT, source, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-		for(i=0; i < chunk; ++i) {
-			// printf("%i\n", i);
-			matrix_t temp[M];
-			for(j=0; j < M; ++j) {
-				matrix_t sum = 0;
-				int start_y = 1 ? -half : -i;
-				int end_y = i + half < window - half ? half : (chunk - i - 1);
-				for (k = start_y; k <= end_y; ++k) {
-					// if (i >= chunk - 1 && j < 10) printf("%d %d %d\n", k, start_y,end_y);
-					sum += buffer[(M*(i-k+half))+j]*filter[half-k];
-				}
-				// smoothed[(M*i) + j] = sum;
-				temp[j] = sum;
-			}
-
-			for(j=0; j < M; ++j) {
-				matrix_t sum = 0;
-				int start_x = j - half >= 0 ? -half :  -j;
-				int end_x = M - j > half ? half : (M - j - 1);
-				for (k = start_x; k <= end_x; ++k) {
-					sum += temp[j+k]*filter[half-k];
-				}
-				smoothed[(M*i) + j] = sum;
-			}
-		}
+		gaussian_convolution(&buffer[M*half], filter, smoothed, chunk, half, window);
 
 		// Send back the smoothed window
         dest = 0;
 		MPI_Send(smoothed, chunk*M, MPI_FLOAT, dest, 0, MPI_COMM_WORLD);
 		MPI_Recv(buffer, window*M, MPI_FLOAT, source, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		
-		for(i=0; i < chunk; ++i) {
-			matrix_t gx[M],gy[M];
-			for(j=0; j < M; ++j) {
-				gx[j] = 0;
-				gy[j] = 0;
-				int start_y = 1 ? -edge_half : -i;
-				int end_y = i + edge_half < window - edge_half ? edge_half : (chunk - i - 1);
-				for (k = start_y; k <= end_y; ++k) {
-					gy[j] += buffer[(M*(i-k+half))+j]*hy[-k+edge_half];
-					gx[j] += buffer[(M*(i-k+half))+j]*hx[-k+edge_half];
-				}
-			}
 
-			for(j=0; j < M; ++j) {
-				matrix_t sum_x = 0;
-				matrix_t sum_y = 0;
-				int start_x = 1 ? -edge_half :  -j;
-				int end_x = M - j > edge_half ? edge_half : (M - j - 1);
-				for (k = start_x; k <= end_x; ++k) {
-					sum_x += gx[j+k]*hy[-k+edge_half];
-					sum_y += gy[j+k]*hx[-k+edge_half];
-				}
-				smoothed[(M*i) + j] = sqrtf(sum_x*sum_x+sum_y*sum_y);
-			}
-		}
+		sobel_convolution(&buffer[M*half],hx,hy,smoothed,chunk,edge_half, window);
 
         MPI_Send(smoothed, chunk*M, MPI_FLOAT, dest, 0, MPI_COMM_WORLD);
      }
 
     /* Program ends */
 
-     printf("done %d\n", world_rank);
-
     // Finalize the MPI environment.
      MPI_Finalize();
+     printf("%f\n", max);
      return 0;
   }

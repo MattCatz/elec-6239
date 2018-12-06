@@ -1,9 +1,10 @@
 .PHONY = all
 
+EXECUTABLE = term_cude
+
 all: term_mpi
 
 term_mpi: main_mpi.c term.h
-	mpicc -Wall -g $^  -lm
+	mpicc -Wall -std=c99 -g $^ -o $@ -lm
 
-term_cuda: main_cuda.c term.h
-	
+include cuda.makefile
