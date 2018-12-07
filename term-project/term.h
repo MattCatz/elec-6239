@@ -4,7 +4,9 @@
 #include <math.h>
 #include <string.h>
 
+#ifndef M_PI
 #define M_PI 3.14159265358
+#endif
 
 #define M 2048
 #define W_SMOOTHING 15
@@ -16,6 +18,20 @@ m[(col_length) * (row) + (col)]
 
 #define MPI_MATRIX_T MPI_FLOAT;
 typedef float matrix_t;
+
+void generate_guassian_2d(matrix_t *guassian) {
+	int i,j;
+	const int L = (W_SMOOTHING - 1)/2;
+	matrix_t exponent;
+	const matrix_t temp = 1 / (2*M_PI*SIGMA*SIGMA);
+
+	for (i=0;i<W_SMOOTHING;i++) {
+		for (j=0;j<W_SMOOTHING;j++) {
+			exponent = ((i-L)*(i-L)+(j-L)*(j-L))/(2*SIGMA*SIGMA);
+			guassian[W_SMOOTHING*i+j] = temp * exp(-exponent);
+		}
+	}
+}
 
 void generate_guassian(matrix_t *guassian) {
 	int i;
@@ -60,7 +76,7 @@ void get_image(matrix_t *image) {
 	fclose(fp);
 }
 
-void save_ppm(char *name, matrix_t *image) {
+void save_ppm(const char *name, matrix_t *image) {
 	unsigned int i;
 	unsigned char out[M*M];
 	matrix_t *px;
@@ -75,6 +91,25 @@ void save_ppm(char *name, matrix_t *image) {
 	}
 
 	fwrite(out, 1, M * M, fp);
+
+	fclose(fp);
+}
+
+void save_g(const char *name, matrix_t *image) {
+	unsigned int i;
+	unsigned char out[W_SMOOTHING*W_SMOOTHING];
+	matrix_t *px;
+	FILE *fp;
+
+	fp = fopen(name, "w");
+
+	fprintf(fp, "P5\n %d %d \n 255\n", W_SMOOTHING, W_SMOOTHING);
+
+	for (i=0,px=image;i<W_SMOOTHING*W_SMOOTHING;++i,++px) {
+		out[i] = lround(*px);
+	}
+
+	fwrite(out, 1, W_SMOOTHING*W_SMOOTHING, fp);
 
 	fclose(fp);
 }

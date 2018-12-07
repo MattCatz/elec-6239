@@ -99,7 +99,7 @@ void sobel_convolution(matrix_t* restrict image, matrix_t* restrict hx, matrix_t
 				sum_y += gy[j+k]*hx[-k+half];
 			}
 			max = sqrtf(sum_x*sum_x+sum_y*sum_y) > max ? sqrtf(sum_x*sum_x+sum_y*sum_y) : max;
-			result[(M*i) + j] = sqrtf(sum_x*sum_x+sum_y*sum_y) >= 40 ? 255: 0;
+			result[(M*i) + j] = sqrtf(sum_x*sum_x+sum_y*sum_y) >= 70 ? 255: 0;
 		}
 	}
 }
@@ -117,7 +117,6 @@ int main(int argc, char** argv) {
     /* Program begins */
 
 	int half,edge_half,chunk;
-	int i,j,k;
 	int source,dest;
 	int window;
 	double start,end;

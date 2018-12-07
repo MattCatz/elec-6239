@@ -1,6 +1,6 @@
 .PHONY = all
 
-EXECUTABLE = term_cude
+EXECUTABLE = term_cuda
 
 all: term_mpi
 

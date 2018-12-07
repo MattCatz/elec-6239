@@ -228,7 +228,7 @@ else
       BUILD_TYPE := release
 endif
 
-ALL_CCFLAGS :=
+ALL_CCFLAGS := 
 ALL_CCFLAGS += $(NVCCFLAGS)
 ALL_CCFLAGS += $(EXTRA_NVCCFLAGS)
 ALL_CCFLAGS += $(addprefix -Xcompiler ,$(CCFLAGS))
@@ -284,7 +284,7 @@ else
 	@echo "Sample is ready - all dependencies have been met"
 endif
 
-$(EXECUTABLE).o: $(EXECUTABLE).cu
+$(EXECUTABLE).o: cuda_main.cu
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
 $(EXECUTABLE): $(EXECUTABLE).o

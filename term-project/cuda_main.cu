@@ -1,140 +1,71 @@
 // System includes
-#include <stdio h>
-#include <assert h>
+#include <stdio.h>
+#include <assert.h>
 
 // CUDA runtime
-#include <cuda_runtime h>
+#include <cuda_runtime.h>
 
 // Helper functions and utilities to work with CUDA
-#include <helper_functions h>
-#include <helper_cuda h>
+#include <helper_functions.h>
+#include <helper_cuda.h>
 
 #include "term.h"
 
-typedef float matrix_t;
-
 // This is the default block size
-const unsigned int BLOCK_SIZE = 16;
+const unsigned int BLOCK_SIZE = 32;
 
-// Size of matrix
-// Make sure that matrix is divisable by block_size
-const unsigned int M = 4096;
+__global__ void convolution_basic(matrix_t* image, matrix_t* filter, matrix_t* result) {
+    matrix_t sum;
+    int rowd,cold,Bx,By,Tx,Ty;
+    int i,j,half,start_x,start_y,end_x,end_y;
 
-// Size of shared memory array
-const unsigned int Mds = BLOCK_SIZE;
+    Bx = blockIdx.x;
+    By = blockIdx.y;
+    Tx = threadIdx.x;
+    Ty = threadIdx.y;
 
-#define INDEX(m, row, col) \
-  m[(M) * (row) + (col)]
+    sum = 0;
 
-////////////////////////////////////////////////////////////////////////////////
-// Row convolution filter
-////////////////////////////////////////////////////////////////////////////////
-__global__ void convolutionRowGPU(matrix_t* image, matrix_t* filter, matrix_t* result) {
-    // Data cache: threadIdx x , threadIdx y
-    __shared__ float data[ TILE_H * (TILE_W + KERNEL_RADIUS * 2) ];
+    rowd = By * BLOCK_SIZE + Ty;
+    cold = Bx * BLOCK_SIZE + Tx;
 
-    // global mem address of this thread
-    const int gLoc = threadIdx x +
-                            IMUL(blockIdx x, blockDim x) +
-                            IMUL(threadIdx y, dataW) +
-                            IMUL(blockIdx y, blockDim y) * dataW;
+    half = (W_SMOOTHING - 1)/2;
 
+    start_y = rowd - half >= 0 ? -half : -rowd;
+    end_y = rowd + half < M ? half : M - rowd - 1;
+    
 
-    int x; // image based coordinate
+    for(i=start_y; i <= end_y; ++i) {
+        start_x = cold - half >= 0 ? -half :  - cold;
+        end_x = cold + half < M ? half : M - cold - 1;
+        // if (rowd > 2046 && cold < 1) printf("%d %d y %d %d x %d %d\n", rowd, cold, start_y, end_y, start_x, end_x);
+        for(j=start_x; j <= end_x; ++j) {
+            sum += image[M*(rowd+i)+(cold+j)]*filter[W_SMOOTHING*(i+half)+(j+half)];
+        }
+    }
 
-    // original image based coordinate
-    const int x0 = threadIdx x + IMUL(blockIdx x, blockDim x);
-    const int shift = threadIdx y * (TILE_W + KERNEL_RADIUS * 2);
-
-    // case1: left
-    x = x0 - KERNEL_RADIUS;
-    if ( x < 0 )
-        data[threadIdx x + shift] = 0;
-    else
-        data[threadIdx x + shift] = d_Data[ gLoc - KERNEL_RADIUS];
-
-    // case2: right
-    x = x0 + KERNEL_RADIUS;
-    if ( x > dataW-1 )
-        data[threadIdx x + blockDim x + shift] = 0;
-    else
-        data[threadIdx x + blockDim x + shift] = d_Data[gLoc + KERNEL_RADIUS];
-
-    __syncthreads();
-
-    // convolution
-    float sum = 0;
-    x = KERNEL_RADIUS + threadIdx x;
-    for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++)
-        sum += data[x + i + shift] * d_Kernel[KERNEL_RADIUS + i];
-
-    d_Result[gLoc] = sum;
-
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Row convolution filter
-////////////////////////////////////////////////////////////////////////////////
-__global__ void convolutionColGPU(float *d_Result,float *d_Data){
-    // Data cache: threadIdx x , threadIdx y
-    __shared__ float data[TILE_W * (TILE_H + KERNEL_RADIUS * 2)];
-
-    // global mem address of this thread
-    const int gLoc = threadIdx x +
-                        IMUL(blockIdx x, blockDim x) +
-                        IMUL(threadIdx y, dataW) +
-                        IMUL(blockIdx y, blockDim y) * dataW;
-
-    int y; // image based coordinate
-
-    // original image based coordinate
-    const int y0 = threadIdx y + IMUL(blockIdx y, blockDim y);
-    const int shift = threadIdx y * (TILE_W);
-
-    // case1: upper
-    y = y0 - KERNEL_RADIUS;
-    if ( y < 0 )
-        data[threadIdx x + shift] = 0;
-    else
-        data[threadIdx x + shift] = d_Data[ gLoc - IMUL(dataW, KERNEL_RADIUS)];
-
-    // case2: lower
-    y = y0 + KERNEL_RADIUS;
-    const int shift1 = shift + IMUL(blockDim y, TILE_W);
-    if ( y > dataH-1 )
-        data[threadIdx x + shift1] = 0;
-    else
-        data[threadIdx x + shift1] = d_Data[gLoc + IMUL(dataW, KERNEL_RADIUS)];
-
-    __syncthreads();
-
-    // convolution
-    float sum = 0;
-    for (int i = 0; i <= KERNEL_RADIUS*2; i++)
-        sum += data[threadIdx x + (threadIdx y + i) * TILE_W] * d_Kernel[i];
-
-    d_Result[gLoc] = sum;
-
+    result[M*(rowd) + cold] = sum;
 }
 
 int main(void) {
-    unsigned int i,j;
 
     // Pointers for host
-    matrix_t *image,
+    matrix_t *image;
     matrix_t *gaussian;
     matrix_t *sobel_x, *sobel_y;
+    matrix_t *result;
 
     // Pointers for device memory
-    matrix_t *image_d,
+    matrix_t *image_d;
     matrix_t *gaussian_d;
     matrix_t *sobel_x_d, *sobel_y_d;
+    matrix_t *result_d;
 
     // Used to measure performance
     cudaEvent_t start, stop;
 
     // Used for timing
-    float msecTotal = 0 0f;
+    float msecTotal = 0.0f;
 
 
     printf("Using block size %d\n", BLOCK_SIZE);
@@ -145,26 +76,33 @@ int main(void) {
     // because cuda is technically a subset
     // of c++ not vanilla c 
     image = (matrix_t *) calloc(M*M, sizeof(matrix_t));
-    assert(ah != NULL);
+    assert(image != NULL);
 
     gaussian = (matrix_t *) calloc(W_SMOOTHING*W_SMOOTHING, sizeof(matrix_t));
-    assert(bh != NULL);
+    assert(gaussian != NULL);
 
     sobel_x = (matrix_t *) calloc(W_EDGE*W_EDGE, sizeof(matrix_t));
-    assert(ch != NULL);
+    assert(sobel_x != NULL);
 
     sobel_y = (matrix_t *) calloc(W_EDGE*W_EDGE, sizeof(matrix_t));
-    assert(ch != NULL);
+    assert(sobel_y != NULL);
+
+    result = (matrix_t *) calloc(M*M, sizeof(matrix_t));
+    assert(result != NULL);
 
     get_image(image);
-    generate_guassian(gaussian);
+    generate_guassian_2d(gaussian);
     generate_sobel(sobel_x,sobel_y);
+
+    save_ppm("Leaves_original_cuda.ppm", image);
+    save_g("2d", gaussian);
 
     // Allocate device memory for matricies
     checkCudaErrors(cudaMalloc((void **) &(image_d), M*M*sizeof(matrix_t)));
     checkCudaErrors(cudaMalloc((void **) &(gaussian_d), W_SMOOTHING*W_SMOOTHING*sizeof(matrix_t)));
     checkCudaErrors(cudaMalloc((void **) &(sobel_x_d), W_EDGE*W_EDGE*sizeof(matrix_t)));
     checkCudaErrors(cudaMalloc((void **) &(sobel_y_d), W_EDGE*W_EDGE*sizeof(matrix_t)));
+    checkCudaErrors(cudaMalloc((void **) &(result_d), M*M*sizeof(matrix_t)));
 
     // Copy host memory to device
     checkCudaErrors(cudaMemcpy(image_d, image, M*M*sizeof(matrix_t), cudaMemcpyHostToDevice));
@@ -178,7 +116,7 @@ int main(void) {
 
     // Setup execution parameters TODO
     dim3 threads(BLOCK_SIZE, BLOCK_SIZE);
-    dim3 grid(M / threads x, M / threads y);
+    dim3 grid(M / threads.x, M / threads.y);
 
     printf("Computing result...\n");
 
@@ -188,15 +126,15 @@ int main(void) {
     checkCudaErrors(cudaEventRecord(start, NULL));
 
     // Execute the kernel
-    convolutionRowGPU <<< grid, threads >>>(cd, ad, bd);
-    convolutionColGPU <<< grid, threads >>>(cd, ad, bd);
-    convolutionRowGPU <<< grid, threads >>>(cd, ad, bd);
-    convolutionColGPU <<< grid, threads >>>(cd, ad, bd);
-    MagnatudeGPU <<< grid, threads >>>(cd, ad, bd);
+    convolution_basic <<< grid, threads >>>(image_d, gaussian_d, result_d);
+    // convolutionColGPU <<< grid, threads >>>(cd, ad, bd);
+    // convolutionRowGPU <<< grid, threads >>>(cd, ad, bd);
+    // convolutionColGPU <<< grid, threads >>>(cd, ad, bd);
+
 
 
     // Copy result from device to host
-    checkCudaErrors(cudaMemcpy(ch, cd, M*M*sizeof(matrix_t), cudaMemcpyDeviceToHost));
+    checkCudaErrors(cudaMemcpy(result, result_d, M*M*sizeof(matrix_t), cudaMemcpyDeviceToHost));
 
     // Record the stop event
     checkCudaErrors(cudaEventRecord(stop, NULL));
@@ -204,10 +142,9 @@ int main(void) {
 
     checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
 
-    printf("done in % 3f (sec)\n", msecTotal/1000 0);
+    printf("done in % 3f (sec)\n", msecTotal/1000);
 
-    // Copy result from device to host
-    checkCudaErrors(cudaMemcpy(ch, cd, M*M*sizeof(matrix_t), cudaMemcpyDeviceToHost));
+    save_ppm("Leaves_blur_cuda.ppm", result);
 
     // Clean up memory
     free(image);
@@ -216,8 +153,8 @@ int main(void) {
     free(sobel_y);
     checkCudaErrors(cudaFree(image_d));
     checkCudaErrors(cudaFree(gaussian_d));
-    checkCudaErrors(cudaFree(sobel_x));
-    checkCudaErrors(cudaFree(sobel_y));
+    checkCudaErrors(cudaFree(sobel_x_d));
+    checkCudaErrors(cudaFree(sobel_y_d));
 
     /* end multiplication */
 
